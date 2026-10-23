@@ -8,27 +8,6 @@ El objetivo es desarrollar una aplicación que permita procesar solicitudes desd
 
 El proyecto se desarrolla en equipo utilizando GitHub y ramas individuales para organizar las contribuciones.
 
-## Estación 1 - Thread y Runnable
-
-**Responsable:** Alexa Loaisiga.
-
-En esta estación se desarrollaron las clases necesarias para simular el procesamiento de solicitudes desde dos ventanillas.
-
-### Clases desarrolladas
-
-**ProcesoVentanilla.java**
-
-Implementa la interfaz `Runnable` y contiene el método `run()`. Simula cinco operaciones por ventanilla, utilizando `Thread.sleep(500)` para representar el tiempo de procesamiento.
-
-También comprueba si el hilo fue interrumpido y maneja `InterruptedException`.
-
-**PruebaVentanillas.java**
-
-Crea dos objetos `Thread` para representar las ventanillas A y B. Utiliza `start()` para ejecutar ambos procesos concurrentemente.
-
-**ComparacionHilos.java**
-
-Permite comparar la ejecución mediante `run()` y `start()` para observar sus diferencias.
 
 ## Preguntas y respuestas - Estación 1
 
