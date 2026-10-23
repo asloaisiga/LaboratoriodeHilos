@@ -1,62 +1,51 @@
 package ni.uam.edu.hilosjava.concurrencia;
 
 import javafx.application.Platform;
+import javafx.fxml.FXML;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
 
 public class Controlador {
 
-    public interface VistaUI {
-        void actualizarEstado(String estado);
-        void agregarLog(String mensaje);
-        void actualizarContadorUI(int valor);
-        void cambiarEstadoBotones(boolean ejecutando);
-    }
+    @FXML private Label lblEstado;
+    @FXML private Label lblContador;
+    @FXML private Button btnIniciar;
+    @FXML private Button btnDetener;
+    @FXML private TextArea areaLogs;
 
-    private final VistaUI vista;
-    private final ControlDetencion controlDetencion;
-
-    // Referencias a los componentes creados por los Integrantes 1, 2 y 3
+    private final ControlDetencion controlDetencion = new ControlDetencion();
     private ContadorCompartido contadorCompartido;
+
     private Thread hiloVentanillaA;
     private Thread hiloVentanillaB;
     private Thread hiloMonitor;
 
-    private boolean sesionEnCurso = false;
+    private volatile boolean sesionActiva = false;
 
-    public Controlador(VistaUI vista) {
-        this.vista = vista;
-        this.controlDetencion = new ControlDetencion();
-    }
+    @FXML
+    public void handleIniciar() {
+        if (sesionActiva) return;
 
-    public synchronized void iniciarSesion() {
-        // Bloquea el reinicio si hay una sesión activa en curso
-        if (sesionEnCurso) {
-            return;
-        }
-
-        sesionEnCurso = true;
+        sesionActiva = true;
         controlDetencion.reiniciar();
+        contadorCompartido = new ContadorCompartido();
 
-        // Instanciación del contador del Integrante 3
-        this.contadorCompartido = new ContadorCompartido();
+        actualizarEstado("Ejecutando");
+        gestionarEstadoBotones(true, false);
+        actualizarContador(0);
+        agregarLog("=== INICIO DE SESIÓN DE VENTANILLAS ===");
 
-        vista.actualizarEstado("Ejecutando");
-        vista.cambiarEstadoBotones(true);
-        vista.actualizarContadorUI(0);
-        vista.agregarLog("--- Inicio de procesamiento en ventanillas ---");
-
-        // Instanciación de Runnables del Integrante 1
-        ProcesoVentanilla ventanillaA = new ProcesoVentanilla("Ventanilla A", contadorCompartido, controlDetencion, this::notificarLog);
-        ProcesoVentanilla ventanillaB = new ProcesoVentanilla("Ventanilla B", contadorCompartido, controlDetencion, this::notificarLog);
+        ProcesoVentanilla ventanillaA = new ProcesoVentanilla("Ventanilla A", contadorCompartido, controlDetencion, this::notificarUI);
+        ProcesoVentanilla ventanillaB = new ProcesoVentanilla("Ventanilla B", contadorCompartido, controlDetencion, this::notificarUI);
 
         hiloVentanillaA = new Thread(ventanillaA, "Hilo-VentanillaA");
         hiloVentanillaB = new Thread(ventanillaB, "Hilo-VentanillaB");
 
-        // Instanciación del monitor del Integrante 2
-        MonitorHilos monitor = new MonitorHilos(hiloVentanillaA, hiloVentanillaB, controlDetencion, this::notificarLog);
+        MonitorHilos monitor = new MonitorHilos(hiloVentanillaA, hiloVentanillaB, controlDetencion, this::notificarUI);
         hiloMonitor = new Thread(monitor, "Hilo-Monitor");
 
-        // Hilo orquestador para no bloquear el JavaFX Application Thread durante la espera (join)
-        Thread hiloOrquestador = new Thread(() -> {
+        Thread orquestador = new Thread(() -> {
             hiloVentanillaA.start();
             hiloVentanillaB.start();
             hiloMonitor.start();
@@ -68,47 +57,68 @@ public class Controlador {
                 Thread.currentThread().interrupt();
             }
 
-            // Actualización del estado final en el hilo gráfico
             Platform.runLater(() -> {
                 if (controlDetencion.esDetencionSolicitada()) {
-                    vista.actualizarEstado("Detenido");
-                    vista.agregarLog("--- Procesamiento detenido por el usuario ---");
+                    actualizarEstado("Detenido");
+                    agregarLog(">>> Proceso detenido por el usuario.");
                 } else {
-                    vista.actualizarEstado("Finalizado");
-                    vista.agregarLog("--- Procesamiento finalizado exitosamente ---");
+                    actualizarEstado("Finalizado");
+                    agregarLog("=== PROCESAMIENTO FINALIZADO EXITOSAMENTE ===");
                 }
-                sesionEnCurso = false;
-                vista.cambiarEstadoBotones(false);
+                sesionActiva = false;
+                gestionarEstadoBotones(false, false);
             });
         }, "Hilo-Orquestador");
 
-        hiloOrquestador.start();
+        orquestador.start();
     }
 
-    public synchronized void detenerSesion() {
-        if (!sesionEnCurso) {
-            return;
-        }
+    @FXML
+    public void handleDetener() {
+        if (!sesionActiva || controlDetencion.esDetencionSolicitada()) return;
 
-        vista.actualizarEstado("Deteniendo");
-        vista.agregarLog(">>> Enviando señal de detención a los hilos...");
+        actualizarEstado("Deteniendo");
+        gestionarEstadoBotones(false, true);
+        agregarLog(">>> Solicitando detención cooperativa de hilos...");
 
-        // 1. Cancelación cooperativa con volatile
         controlDetencion.solicitarDetencion();
 
-        // 2. Interrupción para sacar a los hilos de estados bloqueados (Thread.sleep)
         if (hiloVentanillaA != null) hiloVentanillaA.interrupt();
         if (hiloVentanillaB != null) hiloVentanillaB.interrupt();
         if (hiloMonitor != null) hiloMonitor.interrupt();
     }
 
-    private void notificarLog(String mensaje) {
-        // Envío coordinado de datos a la UI evitando saturación de eventos
+    private void notificarUI(String mensaje) {
         Platform.runLater(() -> {
-            vista.agregarLog(mensaje);
+            agregarLog(mensaje);
             if (contadorCompartido != null) {
-                vista.actualizarContadorUI(contadorCompartido.getValor());
+                actualizarContador(contadorCompartido.getValor());
             }
         });
+    }
+
+    private void actualizarEstado(String estado) {
+        lblEstado.setText(estado);
+    }
+
+    private void agregarLog(String mensaje) {
+        areaLogs.appendText(mensaje + "\n");
+    }
+
+    private void actualizarContador(int valor) {
+        lblContador.setText("Atenciones Totales: " + valor);
+    }
+
+    private void gestionarEstadoBotones(boolean ejecutando, boolean deteniendo) {
+        if (ejecutando) {
+            btnIniciar.setDisable(true);
+            btnDetener.setDisable(false);
+        } else if (deteniendo) {
+            btnIniciar.setDisable(true);
+            btnDetener.setDisable(true);
+        } else {
+            btnIniciar.setDisable(false);
+            btnDetener.setDisable(true);
+        }
     }
 }
