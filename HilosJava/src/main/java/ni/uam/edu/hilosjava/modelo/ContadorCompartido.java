@@ -4,8 +4,8 @@ public class ContadorCompartido implements Contador {
     private int total = 0;
 
     @Override
-    public void incrementar() { total++; }
+    public synchronized void incrementar() { total++; }
 
     @Override
-    public int getTotal() { return total; }
+    public synchronized int getTotal() { return total; }
 }
