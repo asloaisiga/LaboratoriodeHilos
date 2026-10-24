@@ -1,3 +1,4 @@
+
 package ni.uam.edu.hilosjava.concurrencia;
 
 import javafx.application.Platform;
@@ -5,6 +6,11 @@ import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.Tooltip;
+
+import ni.uam.edu.hilosjava.monitoreo.MonitorHilos;
+import ni.uam.edu.hilosjava.Procesos.ProcesoVentanilla;
+import ni.uam.edu.hilosjava.modelo.ContadorCompartido;
 
 public class Controlador {
 
@@ -14,111 +20,184 @@ public class Controlador {
     @FXML private Button btnDetener;
     @FXML private TextArea areaLogs;
 
-    private final ControlDetencion controlDetencion = new ControlDetencion();
-    private ContadorCompartido contadorCompartido;
+    private ContadorCompartido contador;
+    private ControlDetencion control;
 
-    private Thread hiloVentanillaA;
-    private Thread hiloVentanillaB;
-    private Thread hiloMonitor;
+    private Thread hiloA;
+    private Thread hiloB;
 
-    private volatile boolean sesionActiva = false;
+    private MonitorHilos monitor;
+
+    private boolean sesionActiva;
+
+    @FXML
+    private void initialize() {
+        lblEstado.setText("En espera");
+        lblContador.setText("Atenciones Totales: 0");
+        btnDetener.setDisable(true);
+    }
 
     @FXML
     public void handleIniciar() {
-        if (sesionActiva) return;
+
+        if (sesionActiva) {
+            return;
+        }
 
         sesionActiva = true;
-        controlDetencion.reiniciar();
-        contadorCompartido = new ContadorCompartido();
 
-        actualizarEstado("Ejecutando");
-        gestionarEstadoBotones(true, false);
-        actualizarContador(0);
-        agregarLog("=== INICIO DE SESIÓN DE VENTANILLAS ===");
+        contador = new ContadorCompartido();
+        control = new ControlDetencion();
 
-        ProcesoVentanilla ventanillaA = new ProcesoVentanilla("Ventanilla A", contadorCompartido, controlDetencion, this::notificarUI);
-        ProcesoVentanilla ventanillaB = new ProcesoVentanilla("Ventanilla B", contadorCompartido, controlDetencion, this::notificarUI);
+        areaLogs.clear();
+        lblContador.setText("Atenciones Totales: 0");
+        lblEstado.setText("Ejecutando");
 
-        hiloVentanillaA = new Thread(ventanillaA, "Hilo-VentanillaA");
-        hiloVentanillaB = new Thread(ventanillaB, "Hilo-VentanillaB");
+        btnIniciar.setDisable(true);
+        btnDetener.setDisable(false);
 
-        MonitorHilos monitor = new MonitorHilos(hiloVentanillaA, hiloVentanillaB, controlDetencion, this::notificarUI);
-        hiloMonitor = new Thread(monitor, "Hilo-Monitor");
+        hiloA = new Thread(
+                new ProcesoVentanilla(
+                        "Ventanilla A",
+                        contador,
+                        control,
+                        this::notificarUI
+                ),
+                "Ventanilla-A"
+        );
 
-        Thread orquestador = new Thread(() -> {
-            hiloVentanillaA.start();
-            hiloVentanillaB.start();
-            hiloMonitor.start();
+        hiloB = new Thread(
+                new ProcesoVentanilla(
+                        "Ventanilla B",
+                        contador,
+                        control,
+                        this::notificarUI
+                ),
+                "Ventanilla-B"
+        );
+
+        monitor = new MonitorHilos(hiloA, hiloB);
+
+        monitor.setObservador(muestras -> {
+
+            StringBuilder estados =
+                    new StringBuilder("Estados: ");
+
+            for (MonitorHilos.Muestra muestra : muestras) {
+                estados.append(muestra.nombre())
+                        .append("=")
+                        .append(muestra.estado())
+                        .append(" ");
+            }
+
+            lblEstado.setTooltip(
+                    new Tooltip(estados.toString())
+            );
+        });
+
+        monitor.iniciar();
+
+        hiloA.start();
+        hiloB.start();
+
+        Thread supervisor = new Thread(() -> {
 
             try {
-                hiloVentanillaA.join();
-                hiloVentanillaB.join();
+                hiloA.join();
+                hiloB.join();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                return;
             }
 
             Platform.runLater(() -> {
-                if (controlDetencion.esDetencionSolicitada()) {
-                    actualizarEstado("Detenido");
-                    agregarLog(">>> Proceso detenido por el usuario.");
-                } else {
-                    actualizarEstado("Finalizado");
-                    agregarLog("=== PROCESAMIENTO FINALIZADO EXITOSAMENTE ===");
-                }
-                sesionActiva = false;
-                gestionarEstadoBotones(false, false);
-            });
-        }, "Hilo-Orquestador");
 
-        orquestador.start();
+                if (monitor != null) {
+                    monitor.detener();
+                }
+
+                lblContador.setText(
+                        "Atenciones Totales: "
+                                + contador.getTotal()
+                );
+
+                if (control.esDetencionSolicitada()) {
+                    lblEstado.setText("Detenido");
+                } else {
+                    lblEstado.setText("Finalizado");
+                }
+
+                agregarLog(
+                        "Proceso "
+                                + lblEstado.getText().toLowerCase()
+                );
+
+                sesionActiva = false;
+
+                btnIniciar.setDisable(false);
+                btnDetener.setDisable(true);
+            });
+
+        }, "Supervisor");
+
+        supervisor.setDaemon(true);
+        supervisor.start();
     }
 
     @FXML
     public void handleDetener() {
-        if (!sesionActiva || controlDetencion.esDetencionSolicitada()) return;
 
-        actualizarEstado("Deteniendo");
-        gestionarEstadoBotones(false, true);
-        agregarLog(">>> Solicitando detención cooperativa de hilos...");
+        if (!sesionActiva
+                || control.esDetencionSolicitada()) {
+            return;
+        }
 
-        controlDetencion.solicitarDetencion();
+        lblEstado.setText("Deteniendo");
+        btnDetener.setDisable(true);
 
-        if (hiloVentanillaA != null) hiloVentanillaA.interrupt();
-        if (hiloVentanillaB != null) hiloVentanillaB.interrupt();
-        if (hiloMonitor != null) hiloMonitor.interrupt();
+        control.solicitarDetencion();
+
+        hiloA.interrupt();
+        hiloB.interrupt();
+
+        agregarLog(
+                "Se solicitó la cancelación cooperativa"
+        );
     }
 
     private void notificarUI(String mensaje) {
-        Platform.runLater(() -> {
-            agregarLog(mensaje);
-            if (contadorCompartido != null) {
-                actualizarContador(contadorCompartido.getValor());
-            }
-        });
-    }
 
-    private void actualizarEstado(String estado) {
-        lblEstado.setText(estado);
+        Platform.runLater(() -> {
+
+            agregarLog(mensaje);
+
+            lblContador.setText(
+                    "Atenciones Totales: "
+                            + contador.getTotal()
+            );
+        });
     }
 
     private void agregarLog(String mensaje) {
         areaLogs.appendText(mensaje + "\n");
     }
 
-    private void actualizarContador(int valor) {
-        lblContador.setText("Atenciones Totales: " + valor);
-    }
+    public void cerrar() {
 
-    private void gestionarEstadoBotones(boolean ejecutando, boolean deteniendo) {
-        if (ejecutando) {
-            btnIniciar.setDisable(true);
-            btnDetener.setDisable(false);
-        } else if (deteniendo) {
-            btnIniciar.setDisable(true);
-            btnDetener.setDisable(true);
-        } else {
-            btnIniciar.setDisable(false);
-            btnDetener.setDisable(true);
+        if (control != null) {
+            control.solicitarDetencion();
+        }
+
+        if (hiloA != null) {
+            hiloA.interrupt();
+        }
+
+        if (hiloB != null) {
+            hiloB.interrupt();
+        }
+
+        if (monitor != null) {
+            monitor.detener();
         }
     }
 }

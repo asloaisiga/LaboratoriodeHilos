@@ -1,4 +1,4 @@
-package ni.uam.edu.hilosjava;
+package ni.uam.edu.hilosjava.monitoreo;
 
 import javafx.animation.Animation;
 import javafx.animation.KeyFrame;

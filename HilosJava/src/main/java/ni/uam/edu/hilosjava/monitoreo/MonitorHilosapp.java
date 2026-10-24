@@ -1,4 +1,4 @@
-package ni.uam.edu.hilosjava;
+package ni.uam.edu.hilosjava.monitoreo;
 
 import javafx.animation.KeyFrame;
 import javafx.animation.PauseTransition;
@@ -74,7 +74,7 @@ public final class MonitorHilosapp extends Application {
     @Override
     public void start(Stage stage) {
         stage.setTitle("Estación 2 · Monitoreo de estados de hilos");
-        stage.setScene(new Scene(construirVista(), 1050, 700));
+        stage.setScene(new Scene(crearContenido(), 1050, 700));
         stage.setMinWidth(900);
         stage.setMinHeight(600);
         stage.setOnCloseRequest(evento -> cerrarSesion());
@@ -88,7 +88,7 @@ public final class MonitorHilosapp extends Application {
         }
     }
 
-    private VBox construirVista() {
+    public VBox crearContenido() {
         Label titulo = new Label("Estación 2 · Estados de los hilos");
         titulo.setStyle("-fx-font-size: 24px; -fx-font-weight: bold;");
 
@@ -421,7 +421,7 @@ public final class MonitorHilosapp extends Application {
                 + mensaje + System.lineSeparator());
     }
 
-    private void cerrarSesion() {
+    public void cerrarSesion() {
         if (lanzamiento != null) {
             lanzamiento.stop();
         }

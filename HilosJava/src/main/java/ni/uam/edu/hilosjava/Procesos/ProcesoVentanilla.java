@@ -1,32 +1,43 @@
+
 package ni.uam.edu.hilosjava.Procesos;
 
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
-import javafx.stage.Stage;
-
-import static javafx.application.Application.launch;
+import ni.uam.edu.hilosjava.concurrencia.ControlDetencion;
+import ni.uam.edu.hilosjava.modelo.Contador;
+import java.util.function.Consumer;
 
 public class ProcesoVentanilla implements Runnable {
+
     private final String nombre;
+    private final Contador contador;
+    private final ControlDetencion control;
+    private final Consumer<String> mensajes;
 
     public ProcesoVentanilla(String nombre) {
+        this(nombre, null, null, System.out::println);
+    }
+
+    public ProcesoVentanilla(
+            String nombre,
+            Contador contador,
+            ControlDetencion control,
+            Consumer<String> mensajes) {
+
         this.nombre = nombre;
+        this.contador = contador;
+        this.control = control;
+        this.mensajes = mensajes;
     }
 
     @Override
     public void run() {
+
         for (int i = 1; i <= 5; i++) {
 
-            if (Thread.currentThread().isInterrupted()) {
+            if (Thread.currentThread().isInterrupted()
+                    || (control != null
+                    && control.esDetencionSolicitada())) {
                 return;
             }
-
-            System.out.println(
-                    nombre + " procesa " + i
-                            + " | Hilo: "
-                            + Thread.currentThread().getName()
-            );
 
             try {
                 Thread.sleep(500);
@@ -34,20 +45,22 @@ public class ProcesoVentanilla implements Runnable {
                 Thread.currentThread().interrupt();
                 return;
             }
+
+            if (Thread.currentThread().isInterrupted()
+                    || (control != null
+                    && control.esDetencionSolicitada())) {
+                return;
+            }
+
+            if (contador != null) {
+                contador.incrementar();
+            }
+
+            mensajes.accept(
+                    nombre + " procesa " + i
+                            + " | "
+                            + Thread.currentThread().getName()
+            );
         }
-    }
-
-    @Override
-    public void start(Stage primaryStage) throws Exception {
-        FXMLLoader loader = new FXMLLoader(getClass().getResource("vista.fxml"));
-        Parent root = loader.load();
-
-        primaryStage.setTitle("Laboratorio Concurrencia JavaFX - Estación 4 y 5");
-        primaryStage.setScene(new Scene(root, 500, 500));
-        primaryStage.setOnCloseRequest(e -> System.exit(0));
-        primaryStage.show();
-    }
-    public static void main(String[] args) {
-        launch(args);
     }
 }

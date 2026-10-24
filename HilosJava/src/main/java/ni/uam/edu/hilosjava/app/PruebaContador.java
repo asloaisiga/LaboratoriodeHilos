@@ -1,35 +1,69 @@
+
 package ni.uam.edu.hilosjava.app;
 
-import ni.uam.edu.hilosjava.modelo.Contador;
-import ni.uam.edu.hilosjava.modelo.ContadorAtomico;
-import ni.uam.edu.hilosjava.modelo.ContadorCompartido;
+import ni.uam.edu.hilosjava.modelo.*;
 import ni.uam.edu.hilosjava.tareas.TareaIncremento;
 
 import java.util.function.Supplier;
 
 public class PruebaContador {
-    private static final int PRUEBAS = 10;
-    private static final int REPETICIONES = 100000;
 
-    public static void main(String[] args) throws InterruptedException {
-        System.out.println("Esperado por ejecución: " + (2 * REPETICIONES));
-        ejecutar("synchronized", ContadorCompartido::new);
-        ejecutar("AtomicInteger", ContadorAtomico::new);
+    private static final int PRUEBAS = 10;
+    private static final int REPETICIONES = 1000;
+
+    public static void main(String[] args)
+            throws InterruptedException {
+
+        System.out.println(
+                "Resultado esperado: "
+                        + (2 * REPETICIONES)
+        );
+
+        probar(
+                "Sin sincronización",
+                ContadorSinSincronizar::new
+        );
+
+        probar(
+                "synchronized",
+                ContadorCompartido::new
+        );
+
+        probar(
+                "AtomicInteger",
+                ContadorAtomico::new
+        );
     }
 
-    private static void ejecutar(String nombre, Supplier<Contador> fabrica) throws InterruptedException {
-        System.out.println("--- " + nombre + " ---");
-        long inicio = System.nanoTime();
-        for (int n = 1; n <= PRUEBAS; n++) {
+    private static void probar(
+            String titulo,
+            Supplier<Contador> fabrica)
+            throws InterruptedException {
+
+        System.out.println("\n--- " + titulo + " ---");
+
+        for (int i = 1; i <= PRUEBAS; i++) {
+
             Contador contador = fabrica.get();
-            Thread a = new Thread(new TareaIncremento(contador, REPETICIONES), "Ventanilla-A");
-            Thread b = new Thread(new TareaIncremento(contador, REPETICIONES), "Ventanilla-B");
+
+            Thread a = new Thread(
+                    new TareaIncremento(contador, REPETICIONES)
+            );
+
+            Thread b = new Thread(
+                    new TareaIncremento(contador, REPETICIONES)
+            );
+
             a.start();
             b.start();
+
             a.join();
             b.join();
-            System.out.println("Ejecución " + n + ": " + contador.getTotal());
+
+            System.out.println(
+                    "Prueba " + i + ": "
+                            + contador.getTotal()
+            );
         }
-        System.out.println("Tiempo total: " + (System.nanoTime() - inicio) / 1_000_000 + " ms");
     }
 }
